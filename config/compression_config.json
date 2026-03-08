@@ -1,0 +1,145 @@
+{
+  "version": "1.0.0",
+  "config_updated": "2026-03-08T11:00:00+08:00",
+  
+  "compression": {
+    "threshold_percent": 70,
+    "max_context_length": 98304,
+    "trigger_length": 68813,
+    "check_frequency_messages": 10,
+    "min_interval_minutes": 30,
+    "emergency_threshold": 90,
+    "warning_threshold": 65
+  },
+  
+  "strategy": {
+    "algorithm": "smart_compression",
+    "compression_ratio_target": 0.6,
+    "max_compression_ratio": 0.4,
+    "min_content_preserved": 0.8,
+    
+    "preservation_rules": {
+      "preserve_keywords": ["指令", "决策", "重要", "项目", "约定", "代码", "错误", "修复", "配置", "设置"],
+      "preserve_patterns": ["^## ", "^### ", "^\\d+\\.", "^\\* ", "^\\- "],
+      "preserve_sentences_with": ["必须", "需要", "重要", "关键", "紧急", "错误", "修复", "配置"],
+      "preserve_user_messages": true,
+      "preserve_system_messages": true
+    },
+    
+    "compression_rules": {
+      "compress_keywords": ["你好", "嗨", "早上好", "晚上好", "谢谢", "不客气", "明白了", "好的", "收到", "哈哈", "呵呵", "嘿嘿"],
+      "compress_patterns": ["^问候", "^感谢", "^确认", "^闲聊"],
+      "compress_consecutive_similar": true,
+      "compress_redundant_confirmations": true,
+      "compress_pure_emojis": true
+    }
+  },
+  
+  "monitoring": {
+    "log_level": "INFO",
+    "log_file": "logs/compression.log",
+    "log_retention_days": 30,
+    "metrics_enabled": true,
+    "alert_on_failure": true,
+    "notify_user": true,
+    
+    "performance_metrics": {
+      "track_compression_rate": true,
+      "track_execution_time": true,
+      "track_memory_usage": true,
+      "track_user_satisfaction": true
+    }
+  },
+  
+  "integration": {
+    "openclaw_integration": true,
+    "heartbeat_integration": true,
+    "memory_system_integration": true,
+    "external_apis": [],
+    
+    "heartbeat_config": {
+      "check_interval_minutes": 30,
+      "auto_execute": true,
+      "notify_on_compress": true,
+      "log_to_memory": true
+    }
+  },
+  
+  "user_preferences": {
+    "notification_level": "normal",
+    "compression_strength": "standard",
+    "enable_auto_compression": true,
+    "enable_manual_override": true,
+    "show_compression_preview": false,
+    "allow_compression_recovery": true,
+    
+    "notification_levels": {
+      "silent": "无通知",
+      "brief": "简要通知",
+      "normal": "正常通知",
+      "detailed": "详细通知"
+    },
+    
+    "compression_strengths": {
+      "light": "轻度压缩 (保留更多)",
+      "standard": "标准压缩",
+      "aggressive": "重度压缩 (最大压缩)"
+    }
+  },
+  
+  "advanced": {
+    "enable_learning": false,
+    "learning_rate": 0.1,
+    "adaptive_threshold": false,
+    "predictive_compression": false,
+    "multi_language_support": true,
+    
+    "languages": {
+      "chinese": true,
+      "english": true,
+      "mixed": true
+    },
+    
+    "plugins": {
+      "enable_plugins": false,
+      "plugin_directory": "plugins/",
+      "auto_load_plugins": false
+    }
+  },
+  
+  "security": {
+    "encrypt_logs": false,
+    "local_processing_only": true,
+    "no_data_upload": true,
+    "clean_temp_files": true,
+    "temp_file_retention_hours": 24,
+    
+    "access_control": {
+      "require_auth_for_config": false,
+      "log_access_attempts": true,
+      "max_failed_attempts": 5
+    }
+  },
+  
+  "backup": {
+    "backup_before_compression": true,
+    "backup_retention_count": 3,
+    "backup_directory": "backups/compression/",
+    "enable_auto_cleanup": true
+  },
+  
+  "categories": {
+    "technical_keywords": ["代码", "API", "配置", "错误", "调试", "部署", "服务器", "数据库"],
+    "project_keywords": ["项目", "进展", "里程碑", "任务", "完成", "开始", "计划"],
+    "decision_keywords": ["决定", "选择", "方案", "建议", "推荐", "最好", "应该"],
+    "instruction_keywords": ["请", "需要", "帮我", "做", "执行", "运行", "测试"],
+    "social_keywords": ["你好", "谢谢", "再见", "欢迎", "庆祝", "恭喜", "辛苦"]
+  },
+  
+  "aliases": {
+    "上下文": ["上下文", "context", "对话历史", "聊天记录"],
+    "压缩": ["压缩", "compress", "精简", "优化", "整理"],
+    "溢出": ["溢出", "overflow", "超过限制", "超出"],
+    "错误": ["错误", "error", "故障", "问题", "异常"]
+  }
+}
