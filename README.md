@@ -219,3 +219,38 @@ monitor.start_monitoring()
 
 **问题反馈**: [GitHub Issues](https://github.com/[你的用户名]/context-compressor-skill/issues)
 **讨论交流**: [OpenClaw Discord](https://discord.gg/openclaw)
+---
+
+## 🚀 v1.1.0 更新 (2026-03-11)
+
+### 核心优化
+- **触发时机**: 从周期性检查改为每次对话后立即检查
+- **防冲突机制**: 检测OpenClaw是否已在压缩，避免重复
+- **阈值分级**: 85%预警，90%执行压缩
+
+### 新功能
+- 对话后压缩检查器 (`conversation_compression_checker.py`)
+- YAML格式配置文件 (`compression_config.yaml`)
+- 智能冲突避免机制
+
+### 使用方式更新
+```bash
+# 新方式：对话后自动检查
+python3 scripts/conversation_compression_checker.py
+
+# 旧方式：周期性检查（仍然支持）
+python3 scripts/smart_compression_main.py
+```
+
+### 配置文件迁移
+建议从JSON配置迁移到YAML配置：
+```yaml
+# compression_config.yaml
+compression_strategy:
+  trigger_timing: "after_conversation"
+  thresholds:
+    warning: 0.85
+    execution: 0.90
+```
+
+详细更新内容见 [CHANGELOG_v1.1.0.md](CHANGELOG_v1.1.0.md)
