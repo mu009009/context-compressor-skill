@@ -1,145 +1,141 @@
 {
-  "version": "1.0.0",
-  "config_updated": "2026-03-08T11:00:00+08:00",
+  "version": "1.2.0",
+  "description": "Context Compressor Skill v1.2.0 Configuration - Emergency Mode & Anti-Loop Protection",
+  "last_updated": "2026-05-15",
+  "bug_fixes": "Fixed infinite compression loop and reply truncation issues",
   
-  "compression": {
-    "threshold_percent": 70,
-    "max_context_length": 98304,
-    "trigger_length": 68813,
-    "check_frequency_messages": 10,
-    "min_interval_minutes": 30,
-    "emergency_threshold": 90,
-    "warning_threshold": 65
+  "compression_strategy": "smart_three_layer_with_emergency",
+  
+  "emergency_mode": {
+    "enabled": true,
+    "description": "处理严重超标情况（>200%），避免无限循环",
+    "threshold_percent": 200,
+    "one_time_compress_to_percent": 50,
+    "max_compression_attempts": 2,
+    "cooldown_minutes": 15,
+    "action": "deep_clean",
+    "features": {
+      "preserve_critical_conversations": true,
+      "verify_output_integrity": true,
+      "create_emergency_backup": true
+    }
   },
   
-  "strategy": {
-    "algorithm": "smart_compression",
-    "compression_ratio_target": 0.6,
-    "max_compression_ratio": 0.4,
-    "min_content_preserved": 0.8,
-    
-    "preservation_rules": {
-      "preserve_keywords": ["指令", "决策", "重要", "项目", "约定", "代码", "错误", "修复", "配置", "设置"],
-      "preserve_patterns": ["^## ", "^### ", "^\\d+\\.", "^\\* ", "^\\- "],
-      "preserve_sentences_with": ["必须", "需要", "重要", "关键", "紧急", "错误", "修复", "配置"],
-      "preserve_user_messages": true,
-      "preserve_system_messages": true
+  "regular_compression": {
+    "enabled": true,
+    "description": "常规压缩策略（70%-100%超标范围）",
+    "trigger_threshold_percent": 70,
+    "target_threshold_percent": 40,
+    "progressive_summary": {
+      "enabled": true,
+      "time_partitions": [
+        {
+          "name": "recent",
+          "hours": 2,
+          "preservation_level": "detailed"
+        },
+        {
+          "name": "mid",
+          "hours": 6,
+          "exclude_hours": 2,
+          "preservation_level": "medium"
+        },
+        {
+          "name": "old",
+          "exclude_hours": 6,
+          "preservation_level": "highly_summarized"
+        }
+      ]
     },
-    
-    "compression_rules": {
-      "compress_keywords": ["你好", "嗨", "早上好", "晚上好", "谢谢", "不客气", "明白了", "好的", "收到", "哈哈", "呵呵", "嘿嘿"],
-      "compress_patterns": ["^问候", "^感谢", "^确认", "^闲聊"],
-      "compress_consecutive_similar": true,
-      "compress_redundant_confirmations": true,
-      "compress_pure_emojis": true
+    "fifo_enabled": true
+  },
+  
+  "anti_loop_protection": {
+    "enabled": true,
+    "description": "防止无限压缩循环的核心保护机制",
+    "max_consecutive_compressions": 3,
+    "detect_rapid_compression": true,
+    "rapid_threshold_minutes": 5,
+    "cooldown_after_max_attempts": 30,
+    "alert_on_suspicious_loop": true,
+    "features": {
+      "track_compression_history": true,
+      "analyze_compression_patterns": true,
+      "auto_disable_on_loop_detected": false,
+      "fallback_to_manual_mode": true
     }
   },
   
-  "monitoring": {
-    "log_level": "INFO",
-    "log_file": "logs/compression.log",
-    "log_retention_days": 30,
-    "metrics_enabled": true,
-    "alert_on_failure": true,
-    "notify_user": true,
-    
-    "performance_metrics": {
-      "track_compression_rate": true,
-      "track_execution_time": true,
-      "track_memory_usage": true,
-      "track_user_satisfaction": true
+  "output_integrity": {
+    "enabled": true,
+    "description": "确保压缩后回复完整性，避免截断问题",
+    "minimum_reply_length_chars": 10,
+    "verify_brackets_balance": true,
+    "check_sentence_completeness": true,
+    "test_conversation_after_compression": true,
+    "recovery_actions": {
+      "restore_from_backup_on_failure": true,
+      "notify_on_integrity_failure": true,
+      "fallback_to_safe_mode": true
     }
+  },
+  
+  "conflict_detection": {
+    "enabled": true,
+    "check_openclaw_compression": true,
+    "min_interval_seconds": 600,
+    "skip_if_recently_compressed": true,
+    "openclaw_priority": true,
+    "wait_for_openclaw_timeout": 30,
+    "fallback_to_skill": true
+  },
+  
+  "monitoring_and_logging": {
+    "log_level": "INFO",
+    "enable_real_time_monitoring": true,
+    "check_interval_seconds": 300,
+    "alert_on_warning": true,
+    "emergency_alert_threshold_percent": 150,
+    "log_compression_attempts": true,
+    "analyze_compression_efficiency": true
   },
   
   "integration": {
-    "openclaw_integration": true,
-    "heartbeat_integration": true,
-    "memory_system_integration": true,
-    "external_apis": [],
-    
-    "heartbeat_config": {
-      "check_interval_minutes": 30,
-      "auto_execute": true,
-      "notify_on_compress": true,
-      "log_to_memory": true
-    }
+    "with_openclaw": true,
+    "with_memory_manager": true,
+    "with_smart_reminder": true,
+    "with_heartbeat_system": true,
+    "integration_mode": "cooperative"
   },
   
-  "user_preferences": {
-    "notification_level": "normal",
-    "compression_strength": "standard",
-    "enable_auto_compression": true,
-    "enable_manual_override": true,
-    "show_compression_preview": false,
-    "allow_compression_recovery": true,
-    
-    "notification_levels": {
-      "silent": "无通知",
-      "brief": "简要通知",
-      "normal": "正常通知",
-      "detailed": "详细通知"
-    },
-    
-    "compression_strengths": {
-      "light": "轻度压缩 (保留更多)",
-      "standard": "标准压缩",
-      "aggressive": "重度压缩 (最大压缩)"
-    }
-  },
-  
-  "advanced": {
-    "enable_learning": false,
-    "learning_rate": 0.1,
-    "adaptive_threshold": false,
-    "predictive_compression": false,
-    "multi_language_support": true,
-    
-    "languages": {
-      "chinese": true,
-      "english": true,
-      "mixed": true
-    },
-    
-    "plugins": {
-      "enable_plugins": false,
-      "plugin_directory": "plugins/",
-      "auto_load_plugins": false
-    }
-  },
-  
-  "security": {
-    "encrypt_logs": false,
-    "local_processing_only": true,
-    "no_data_upload": true,
-    "clean_temp_files": true,
-    "temp_file_retention_hours": 24,
-    
-    "access_control": {
-      "require_auth_for_config": false,
-      "log_access_attempts": true,
-      "max_failed_attempts": 5
-    }
-  },
-  
-  "backup": {
+  "backup_and_recovery": {
+    "enabled": true,
     "backup_before_compression": true,
-    "backup_retention_count": 3,
-    "backup_directory": "backups/compression/",
-    "enable_auto_cleanup": true
+    "keep_recent_backups": 3,
+    "backup_retention_hours": 24,
+    "emergency_restore_enabled": true,
+    "auto_restore_on_failure": false
   },
   
-  "categories": {
-    "technical_keywords": ["代码", "API", "配置", "错误", "调试", "部署", "服务器", "数据库"],
-    "project_keywords": ["项目", "进展", "里程碑", "任务", "完成", "开始", "计划"],
-    "decision_keywords": ["决定", "选择", "方案", "建议", "推荐", "最好", "应该"],
-    "instruction_keywords": ["请", "需要", "帮我", "做", "执行", "运行", "测试"],
-    "social_keywords": ["你好", "谢谢", "再见", "欢迎", "庆祝", "恭喜", "辛苦"]
+  "performance_optimization": {
+    "batch_processing_size": 1000,
+    "max_processing_time_seconds": 30,
+    "memory_limit_mb": 512,
+    "cpu_usage_limit_percent": 50
   },
   
-  "aliases": {
-    "上下文": ["上下文", "context", "对话历史", "聊天记录"],
-    "压缩": ["压缩", "compress", "精简", "优化", "整理"],
-    "溢出": ["溢出", "overflow", "超过限制", "超出"],
-    "错误": ["错误", "error", "故障", "问题", "异常"]
+  "safety_limits": {
+    "max_context_chars": 98304,
+    "absolute_max_chars_before_emergency": 196608,
+    "min_context_chars_after_compression": 10000,
+    "max_compression_ratio": 0.9
+  },
+  
+  "debug_and_testing": {
+    "enable_debug_mode": false,
+    "log_verbose_details": false,
+    "test_mode": false,
+    "simulate_high_context": false,
+    "validate_configuration": true
   }
 }

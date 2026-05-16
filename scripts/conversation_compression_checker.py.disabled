@@ -14,7 +14,7 @@ import subprocess
 from pathlib import Path
 
 class ConversationCompressionChecker:
-    def __init__(self, config_path="config/compression_config.yaml"):
+    def __init__(self, config_path="/root/.openclaw/workspace/context-compressor-skill/config/compression_config.yaml"):
         self.config_path = config_path
         self.load_config()
         self.setup_logging()
@@ -39,7 +39,28 @@ class ConversationCompressionChecker:
                     "max_chars": 98304,
                     "warning_chars": 83558,
                     "compress_chars": 88474
+                },
+                "conflict_prevention": {
+                    "check_openclaw_compression": True,
+                    "min_interval_seconds": 300,
+                    "skip_if_recently_compressed": True
                 }
+            },
+            "algorithm": {
+                "method": "intelligent_summary",
+                "preserve_items": ["key_instructions", "important_decisions", "system_commands"],
+                "remove_items": ["redundant_greetings", "confirmation_messages", "repetitive_content"]
+            },
+            "monitoring": {
+                "log_dir": "./logs",
+                "enable_real_time_monitoring": True,
+                "check_interval_seconds": 60,
+                "alert_on_warning": True
+            },
+            "integration": {
+                "with_openclaw": True,
+                "with_memory_manager": True,
+                "with_smart_reminder": True
             }
         }
     
@@ -54,7 +75,7 @@ class ConversationCompressionChecker:
         try:
             # 尝试从OpenClaw日志或状态获取上下文使用率
             result = subprocess.run(
-                "openclaw status 2>&1 | grep -i 'context\|token' | head -5",
+                r"openclaw status 2>&1 | grep -i 'context\|token' | head -5",
                 shell=True,
                 capture_output=True,
                 text=True
@@ -75,7 +96,7 @@ class ConversationCompressionChecker:
         try:
             # 检查OpenClaw日志中是否有压缩相关活动
             result = subprocess.run(
-                "journalctl --user -u openclaw-gateway --since '1 minute ago' | grep -i 'compress\|compact' | wc -l",
+                r"journalctl --user -u openclaw-gateway --since '1 minute ago' | grep -i 'compress\|compact' | wc -l",
                 shell=True,
                 capture_output=True,
                 text=True
@@ -115,12 +136,13 @@ class ConversationCompressionChecker:
         
         # 调用压缩执行脚本
         try:
-            script_path = "../conversation_compression_executor.sh"
+            script_path = os.path.join(os.path.dirname(__file__), "conversation_compression_executor.sh")
             if os.path.exists(script_path):
                 result = subprocess.run(
                     ["bash", script_path],
                     capture_output=True,
-                    text=True
+                    text=True,
+                    timeout=30  # 增加超时时间到30秒
                 )
                 if result.returncode == 0:
                     print("✅ 压缩执行成功")

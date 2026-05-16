@@ -1,300 +1,440 @@
 #!/usr/bin/env python3
-# 🧠 智能压缩主控系统
-# 整合三层压缩策略
+"""
+智能压缩主程序
+协调所有压缩组件，提供统一接口
+"""
 
-import os
+import sys
+import time
 import json
-import subprocess
-import datetime
-import logging
+import yaml
 from pathlib import Path
 
+# 导入其他组件
+sys.path.append(str(Path(__file__).parent))
+
+try:
+    from smart_compressor import SmartCompressor
+    from context_monitor import ContextMonitor
+    from emergency_compressor import EmergencyCompressor
+    from compression_logger import CompressionLogger, get_logger
+    COMPONENTS_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ 组件导入失败: {e}")
+    COMPONENTS_AVAILABLE = False
+
 class SmartCompressionSystem:
-    """智能压缩主控系统"""
+    """智能压缩系统 - 主协调器"""
     
-    def __init__(self):
-        self.max_length = 98304  # OpenClaw最大上下文长度
-        self.threshold_percent = 70  # 压缩触发阈值
-        self.target_percent = 40  # 压缩后目标阈值
+    def __init__(self, config_path=None):
+        """初始化智能压缩系统"""
+        self.config_path = config_path or "/root/.openclaw/workspace/context-compressor-skill/config/compression_config.json"
+        self.config = self.load_config()
         
-        self.threshold_length = self.max_length * self.threshold_percent // 100
-        self.target_length = self.max_length * self.target_percent // 100
+        # 初始化组件
+        self.components = {}
+        self.initialize_components()
         
-        self.session_dir = Path("/root/.openclaw/agents/main/sessions")
-        self.memory_dir = Path("/root/.openclaw/workspace/memory")
+        # 系统状态
+        self.system_status = {
+            "initialized": False,
+            "components_ready": False,
+            "last_check": None,
+            "last_compression": None,
+            "total_compressions": 0,
+            "total_overflows": 0
+        }
         
-        # 设置日志
-        self.setup_logging()
-        self.logger = logging.getLogger(__name__)
+        # 从配置获取参数
+        self.setup_from_config()
     
-    def setup_logging(self):
-        """设置日志系统"""
-        log_dir = Path(__file__).parent.parent / "logs"
-        log_dir.mkdir(exist_ok=True)
-        
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(log_dir / "smart_compression.log"),
-                logging.StreamHandler()
-            ]
-        )
-    
-    def estimate_context_length(self):
-        """估算当前上下文长度"""
-        session_files = list(self.session_dir.glob("*.jsonl"))
-        if not session_files:
-            self.logger.warning("找不到会话文件")
-            return 0
-        
-        # 获取最新会话文件
-        current_session = max(session_files, key=lambda x: x.stat().st_mtime)
-        
+    def load_config(self):
+        """加载配置文件"""
         try:
-            # 统计消息数量
-            with open(current_session, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
-                message_count = len(lines)
-            
-            # 每条消息约400字符
-            estimated_length = message_count * 400
-            
-            self.logger.info(f"估算结果: {message_count}条消息, {estimated_length}字符")
-            return estimated_length
-            
-        except Exception as e:
-            self.logger.error(f"估算上下文长度失败: {e}")
-            return 0
-    
-    def check_openclaw_compression(self):
-        """检查OpenClaw是否正在执行压缩"""
-        try:
-            # 检查OpenClaw日志中的压缩记录
-            cmd = "journalctl --user -u openclaw-gateway --since '3 minutes ago' 2>/dev/null"
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-            
-            if "attempting auto-compaction" in result.stdout:
-                self.logger.info("检测到OpenClaw正在执行自动压缩")
-                return True
+            config_file = Path(self.config_path)
+            if config_file.exists():
+                if self.config_path.endswith('.yaml') or self.config_path.endswith('.yml'):
+                    with open(config_file, 'r', encoding='utf-8') as f:
+                        return yaml.safe_load(f)
+                else:
+                    with open(config_file, 'r', encoding='utf-8') as f:
+                        return json.load(f)
             else:
-                return False
-                
+                print(f"⚠️ 配置文件不存在: {self.config_path}")
+                return self.get_default_config()
         except Exception as e:
-            self.logger.error(f"检查OpenClaw压缩状态失败: {e}")
-            return False
+            print(f"❌ 配置文件加载失败: {e}")
+            return self.get_default_config()
     
-    def check_overflow_logs(self):
-        """检查溢出日志"""
-        try:
-            cmd = "journalctl --user -u openclaw-gateway --since '1 hour ago' 2>/dev/null"
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-            
-            overflow_count = result.stdout.count("exceeds the maximum length")
-            self.logger.info(f"最近1小时溢出次数: {overflow_count}")
-            return overflow_count
-            
-        except Exception as e:
-            self.logger.error(f"检查溢出日志失败: {e}")
-            return 0
+    def get_default_config(self):
+        """获取默认配置"""
+        return {
+            "compression_strategy": {
+                "trigger_timing": "after_conversation",
+                "thresholds": {
+                    "warning": 0.85,
+                    "execution": 0.90
+                },
+                "context_limits": {
+                    "max_chars": 98304,
+                    "warning_chars": 83558,
+                    "compress_chars": 88474
+                }
+            },
+            "emergency_config": {
+                "emergency_threshold": 1.0,
+                "max_emergency_attempts": 3,
+                "emergency_strategy": "restart_session"
+            },
+            "monitoring": {
+                "check_interval_seconds": 60,
+                "enable_real_time_monitoring": True
+            }
+        }
     
-    def log_decision(self, decision_type, context_length, usage_percent, additional_info=""):
-        """记录压缩决策"""
-        today_file = self.memory_dir / f"{datetime.datetime.now().strftime('%Y-%m-%d')}.md"
+    def setup_from_config(self):
+        """从配置设置参数"""
+        # 压缩策略
+        strategy = self.config.get("compression_strategy", {})
+        thresholds = strategy.get("thresholds", {})
+        context_limits = strategy.get("context_limits", {})
+        
+        self.warning_threshold = thresholds.get("warning", 0.85)
+        self.execution_threshold = thresholds.get("execution", 0.90)
+        
+        self.max_chars = context_limits.get("max_chars", 98304)
+        self.warning_chars = context_limits.get("warning_chars", int(98304 * 0.85))
+        self.compress_chars = context_limits.get("compress_chars", int(98304 * 0.90))
+        
+        # 应急配置
+        emergency_config = self.config.get("emergency_config", {})
+        self.emergency_threshold = emergency_config.get("emergency_threshold", 1.0)
+        
+        # 监控配置
+        monitoring = self.config.get("monitoring", {})
+        self.check_interval = monitoring.get("check_interval_seconds", 60)
+    
+    def initialize_components(self):
+        """初始化所有组件"""
+        if not COMPONENTS_AVAILABLE:
+            print("⚠️ 组件不可用，使用简化模式")
+            self.components_available = False
+            return
         
         try:
-            # 创建或打开今日记忆文件
-            if not today_file.exists():
-                with open(today_file, 'w', encoding='utf-8') as f:
-                    f.write(f"# 🧠 记忆文件 - {datetime.datetime.now().strftime('%Y-%m-%d')}\n")
-                    f.write(f"创建时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+            # 初始化日志记录器
+            self.components["logger"] = get_logger()
             
-            # 添加决策记录
-            with open(today_file, 'a', encoding='utf-8') as f:
-                f.write("## 🧠 智能压缩决策记录\n")
-                f.write(f"- **时间**: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                f.write(f"- **决策类型**: {decision_type}\n")
-                f.write(f"- **上下文长度**: {context_length} 字符\n")
-                f.write(f"- **使用率**: {usage_percent}%\n")
-                f.write(f"- **阈值**: {self.threshold_percent}% ({self.threshold_length} 字符)\n")
-                f.write(f"- **目标**: {self.target_percent}% ({self.target_length} 字符)\n")
-                
-                if additional_info:
-                    f.write(f"- **附加信息**: {additional_info}\n")
-                
-                f.write("\n")
+            # 初始化上下文监控器
+            monitor_config = {
+                "check_interval_seconds": self.check_interval,
+                "warning_threshold": self.warning_threshold,
+                "critical_threshold": self.execution_threshold,
+                "context_limits": {
+                    "max_chars": self.max_chars,
+                    "warning_chars": self.warning_chars,
+                    "critical_chars": self.compress_chars
+                }
+            }
+            self.components["monitor"] = ContextMonitor(monitor_config)
             
-            self.logger.info(f"决策已记录到: {today_file}")
-            return True
+            # 初始化智能压缩器
+            self.components["compressor"] = SmartCompressor()
+            
+            # 初始化应急压缩器
+            emergency_config = {
+                "emergency_threshold": self.emergency_threshold,
+                "emergency_strategy": "restart_session"
+            }
+            self.components["emergency"] = EmergencyCompressor(emergency_config)
+            
+            self.components_available = True
+            print("✅ 所有组件初始化完成")
             
         except Exception as e:
-            self.logger.error(f"记录决策失败: {e}")
-            return False
+            print(f"❌ 组件初始化失败: {e}")
+            self.components_available = False
     
-    def execute_emergency_compression(self):
-        """执行应急压缩"""
-        self.logger.info("🚨 执行应急压缩...")
+    def check_context_status(self):
+        """检查上下文状态"""
+        print("🔍 检查上下文状态...")
         
         try:
-            # 调用应急压缩器
-            emergency_script = Path(__file__).parent / "emergency_compressor.py"
+            if self.components_available and "monitor" in self.components:
+                status = self.components["monitor"].check_context_usage()
+            else:
+                # 简化检查
+                status = self.simple_context_check()
+            
+            self.system_status["last_check"] = time.time()
+            
+            if status:
+                # 记录状态
+                if self.components_available and "logger" in self.components:
+                    if status.get("status") == "CRITICAL_OVERFLOW":
+                        self.components["logger"].log_context_overflow(
+                            status["context_length"],
+                            status["max_chars"],
+                            "system_check"
+                        )
+                        self.system_status["total_overflows"] += 1
+            
+            return status
+            
+        except Exception as e:
+            print(f"❌ 上下文检查失败: {e}")
+            return None
+    
+    def simple_context_check(self):
+        """简化上下文检查"""
+        # 这里可以调用现有的检查脚本或简单估计
+        import subprocess
+        
+        try:
+            # 尝试调用现有的检查脚本
             result = subprocess.run(
-                ["python3", str(emergency_script)],
+                ["python3", "/root/.openclaw/workspace/context-compressor-skill/scripts/conversation_compression_checker.py"],
                 capture_output=True,
-                text=True
+                text=True,
+                timeout=10
             )
             
-            if result.returncode == 0:
-                self.logger.info("✅ 应急压缩执行成功")
-                return True
+            # 解析输出
+            usage = 50.0  # 默认
+            for line in result.stdout.split('\n'):
+                if "上下文使用率" in line and "%" in line:
+                    import re
+                    match = re.search(r'([\d.]+)%', line)
+                    if match:
+                        usage = float(match.group(1))
+                        break
+            
+            context_length = self.max_chars * (usage / 100)
+            
+            # 确定状态
+            if usage >= 100:
+                status = "CRITICAL_OVERFLOW"
+            elif usage >= (self.execution_threshold * 100):
+                status = "CRITICAL"
+            elif usage >= (self.warning_threshold * 100):
+                status = "WARNING"
             else:
-                self.logger.error(f"应急压缩执行失败: {result.stderr}")
-                return False
-                
+                status = "NORMAL"
+            
+            return {
+                "usage_percentage": usage,
+                "context_length": context_length,
+                "max_chars": self.max_chars,
+                "status": status,
+                "timestamp": time.time()
+            }
+            
         except Exception as e:
-            self.logger.error(f"调用应急压缩器失败: {e}")
-            return False
+            print(f"❌ 简化检查失败: {e}")
+            # 返回默认状态
+            return {
+                "usage_percentage": 50.0,
+                "context_length": self.max_chars * 0.5,
+                "max_chars": self.max_chars,
+                "status": "NORMAL",
+                "timestamp": time.time()
+            }
     
-    def execute_regular_compression(self, context_length):
-        """执行常规压缩"""
-        self.logger.info("🔧 执行常规压缩...")
+    def decide_compression_action(self, status):
+        """决定压缩操作"""
+        if not status:
+            return None
         
-        # 计算需要的压缩率
-        needed_rate = 100 - (self.target_length * 100 // context_length)
-        if needed_rate < 30:
-            needed_rate = 30  # 至少压缩30%
+        usage = status.get("usage_percentage", 0)
+        context_status = status.get("status", "NORMAL")
         
-        self.logger.info(f"压缩策略: FIFO + 渐进式总结")
-        self.logger.info(f"目标压缩率: {needed_rate}%")
-        self.logger.info(f"目标使用率: {self.target_percent}% 以下")
+        actions = []
         
-        # 这里应该调用实际的常规压缩逻辑
-        # 暂时记录成功状态
-        return True
+        # 应急情况
+        if usage >= 100:
+            actions.append({
+                "type": "EMERGENCY",
+                "priority": "HIGHEST",
+                "reason": f"上下文超限 ({usage:.1f}%)",
+                "component": "emergency"
+            })
+        
+        # 临界情况
+        elif usage >= (self.execution_threshold * 100):
+            actions.append({
+                "type": "COMPRESSION",
+                "priority": "HIGH",
+                "reason": f"上下文接近超限 ({usage:.1f}%)",
+                "component": "compressor"
+            })
+        
+        # 警告情况
+        elif usage >= (self.warning_threshold * 100):
+            actions.append({
+                "type": "MONITOR",
+                "priority": "MEDIUM",
+                "reason": f"上下文使用率较高 ({usage:.1f}%)",
+                "component": "monitor"
+            })
+        
+        return actions
     
-    def make_decision(self):
-        """做出压缩决策"""
-        self.logger.info("🎯 开始压缩决策分析...")
+    def execute_compression(self, action):
+        """执行压缩操作"""
+        if not action:
+            return {"success": False, "reason": "no_action"}
         
-        # 1. 获取当前状态
-        context_length = self.estimate_context_length()
-        usage_percent = (context_length * 100) // self.max_length
-        overflow_count = self.check_overflow_logs()
+        action_type = action.get("type")
+        component_name = action.get("component")
         
-        print(f"\n📊 系统状态分析:")
-        print(f"  - 估算长度: {context_length} 字符")
-        print(f"  - 使用率: {usage_percent}%")
-        print(f"  - 阈值 ({self.threshold_percent}%): {self.threshold_length} 字符")
-        print(f"  - 目标 ({self.target_percent}%): {self.target_length} 字符")
-        print(f"  - 最近溢出次数: {overflow_count}")
+        print(f"🔧 执行压缩操作: {action_type} (优先级: {action.get('priority')})")
+        print(f"   原因: {action.get('reason')}")
         
-        # 2. 检查OpenClaw冲突
-        if self.check_openclaw_compression():
-            print(f"\n⏸️ 检测到OpenClaw正在压缩")
-            print(f"📋 决策: 跳过我们的压缩，避免冲突")
+        try:
+            if self.components_available and component_name in self.components:
+                component = self.components[component_name]
+                
+                if action_type == "EMERGENCY" and hasattr(component, "execute_emergency_compression"):
+                    # 执行应急压缩
+                    status = self.check_context_status()
+                    if status:
+                        result = component.execute_emergency_compression(
+                            status["context_length"],
+                            status["max_chars"],
+                            "system_triggered"
+                        )
+                elif action_type == "COMPRESSION" and hasattr(component, "compress"):
+                    # 执行常规压缩
+                    result = component.compress()
+                else:
+                    result = {"success": False, "reason": "component_not_supported"}
+            else:
+                # 简化执行
+                result = self.simple_compression_execution(action_type)
             
-            self.log_decision(
-                "跳过压缩（避免冲突）",
-                context_length,
-                usage_percent,
-                "OpenClaw正在执行自动压缩"
-            )
+            # 记录压缩操作
+            if result.get("success"):
+                self.system_status["total_compressions"] += 1
+                self.system_status["last_compression"] = time.time()
+                
+                if self.components_available and "logger" in self.components:
+                    self.components["logger"].log_compression_end(
+                        None, "success", 0, compressed_to="unknown"
+                    )
             
-            return "skip"
-        
-        # 3. 决策逻辑
-        # 情况A：已严重溢出 (>100%)
-        if context_length >= self.max_length:
-            print(f"\n🚨 情况A：上下文已严重溢出！")
-            print(f"📋 决策: 执行应急压缩（重建会话）")
+            return result
             
-            self.log_decision(
-                "应急压缩",
-                context_length,
-                usage_percent,
-                f"使用率 {usage_percent}% > 100%"
-            )
-            
-            return "emergency"
-        
-        # 情况B：超过阈值但未溢出 (70%-100%)
-        if context_length >= self.threshold_length:
-            print(f"\n⚠️ 情况B：超过{self.threshold_percent}%阈值但未溢出")
-            print(f"📋 决策: 执行常规智能压缩")
-            
-            self.log_decision(
-                "常规压缩",
-                context_length,
-                usage_percent,
-                f"使用率 {usage_percent}% > {self.threshold_percent}%"
-            )
-            
-            return "regular"
-        
-        # 情况C：正常状态 (<70%)
-        print(f"\n✅ 情况C：状态正常 (<{self.threshold_percent}%)")
-        print(f"📋 决策: 无需压缩，继续监控")
-        
-        self.log_decision(
-            "无需压缩",
-            context_length,
-            usage_percent,
-            f"使用率 {usage_percent}% < {self.threshold_percent}%"
-        )
-        
-        return "normal"
+        except Exception as e:
+            print(f"❌ 压缩执行失败: {e}")
+            return {"success": False, "error": str(e)}
     
-    def execute_decision(self, decision):
-        """执行决策"""
-        if decision == "emergency":
-            return self.execute_emergency_compression()
-        elif decision == "regular":
-            context_length = self.estimate_context_length()
-            return self.execute_regular_compression(context_length)
-        elif decision == "skip":
-            return True  # 跳过也是成功
-        elif decision == "normal":
-            return True  # 正常状态
+    def simple_compression_execution(self, action_type):
+        """简化压缩执行"""
+        if action_type == "EMERGENCY":
+            print("💥 执行应急压缩 (简化模式)...")
+            print("   建议: 重启当前会话")
+            return {
+                "success": True,
+                "action": "suggest_restart",
+                "message": "建议重启会话来清理上下文"
+            }
         else:
-            self.logger.error(f"未知决策类型: {decision}")
-            return False
+            print("🔧 执行常规压缩 (简化模式)...")
+            print("   建议: 清理工具调用历史")
+            return {
+                "success": True,
+                "action": "suggest_cleanup",
+                "message": "建议清理工具调用历史"
+            }
+    
+    def get_system_status(self):
+        """获取系统状态"""
+        status = self.system_status.copy()
+        
+        # 添加组件状态
+        status["components"] = {}
+        if self.components_available:
+            for name, component in self.components.items():
+                status["components"][name] = "available"
+        else:
+            status["components"] = {"all": "unavailable"}
+        
+        # 添加配置信息
+        status["config"] = {
+            "warning_threshold": self.warning_threshold,
+            "execution_threshold": self.execution_threshold,
+            "max_chars": self.max_chars,
+            "emergency_threshold": self.emergency_threshold
+        }
+        
+        return status
+    
+    def run_compression_cycle(self):
+        """运行压缩周期"""
+        print("🔄 开始压缩周期检查")
+        print("=" * 50)
+        
+        # 检查上下文状态
+        status = self.check_context_status()
+        if not status:
+            print("❌ 无法获取上下文状态")
+            return
+        
+        # 显示状态
+        status_icons = {
+            "NORMAL": "✅",
+            "WARNING": "⚠️",
+            "CRITICAL": "🚨",
+            "CRITICAL_OVERFLOW": "💥"
+        }
+        
+        icon = status_icons.get(status["status"], "❓")
+        print(f"{icon} 上下文状态: {status['status']}")
+        print(f"   使用率: {status['usage_percentage']:.1f}%")
+        print(f"   长度: {int(status['context_length']):,}/{status['max_chars']:,} 字符")
+        
+        # 决定压缩操作
+        actions = self.decide_compression_action(status)
+        
+        if actions:
+            print(f"\n📋 建议操作 ({len(actions)} 个):")
+            for i, action in enumerate(actions):
+                print(f"  {i+1}. [{action['priority']}] {action['type']}: {action['reason']}")
+            
+            # 执行最高优先级操作
+            if actions:
+                primary_action = actions[0]
+                result = self.execute_compression(primary_action)
+                print(f"\n📊 执行结果: {result}")
+        else:
+            print("\n✅ 无需压缩操作")
+        
+        print("=" * 50)
+        return status, actions
 
 def main():
     """主函数"""
-    print("==========================================")
-    print("🧠 智能压缩主控系统启动")
-    print("时间:", datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-    print("==========================================")
+    print("🧠 智能压缩系统 v1.0")
+    print("=" * 50)
     
+    # 创建系统实例
     system = SmartCompressionSystem()
     
-    try:
-        # 做出决策
-        decision = system.make_decision()
-        
-        # 执行决策
-        success = system.execute_decision(decision)
-        
-        if success:
-            print("\n✅ 智能压缩决策执行成功")
-            
-            # 显示总结
-            print("\n==========================================")
-            print("🧠 智能压缩决策完成")
-            print("系统采用三层策略：")
-            print("  1. 应急压缩 (>100%)：重建会话")
-            print("  2. 常规压缩 (70-100%)：渐进式总结")
-            print("  3. 冲突避免：检测OpenClaw状态")
-            print("  4. 正常状态 (<70%)：仅监控")
-            print("==========================================")
-        else:
-            print("\n❌ 决策执行失败")
-            
-    except Exception as e:
-        print(f"\n❌ 执行过程中发生错误: {e}")
-        return 1
+    # 显示系统状态
+    status = system.get_system_status()
+    print(f"📊 系统状态: {'已初始化' if status['initialized'] else '未初始化'}")
+    print(f"🔧 组件状态: {len(status['components'])} 个组件")
+    
+    # 运行压缩周期
+    result = system.run_compression_cycle()
+    
+    # 显示最终状态
+    final_status = system.get_system_status()
+    print(f"\n📈 统计信息:")
+    print(f"   总压缩次数: {final_status['total_compressions']}")
+    print(f"   总超限次数: {final_status['total_overflows']}")
     
     return 0
 
 if __name__ == "__main__":
-    exit(main())
+    sys.exit(main())

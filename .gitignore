@@ -1,69 +1,45 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
+# 备份文件
+*.backup*
+*_backup_*
+*.bak
+*.old
+*.tmp
 
-# Environment
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+# 配置文件备份
+config/archive/
+config/*_backup_*.json
 
-# IDE
-.vscode/
-.idea/
+# 脚本备份
+scripts_backup_*/
+
+# 日志文件
+logs/*.log
+!logs/.gitkeep
+
+# 压缩备份
+compression_backups/
+
+# 临时文件
 *.swp
 *.swo
 *~
+
+# IDE文件
+.vscode/
+.idea/
+*.code-workspace
+
+# 系统文件
 .DS_Store
-
-# 日志和临时文件
-logs/
-*.log
-*.tmp
-*.temp
-*.bak
-*.backup
-
-# 压缩备份
-backups/
-*.zip
-*.tar.gz
-*.7z
-
-# 测试相关
-.coverage
-htmlcov/
-.pytest_cache/
-.tox/
-
-# 系统相关
 Thumbs.db
-desktop.ini
 
-# 用户数据
-user_config.json
-local_settings.py
+# 测试文件
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
-# OpenClaw集成
-.openclaw/
+# 本地配置
+local_config.json
+.env
+.env.local
